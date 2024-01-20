@@ -23,7 +23,7 @@ class pubmed_database:
                     FOREIGN KEY (SpeciesID) REFERENCES Species(ID)
                     )''')
 
-        self.cur.execute('''CREATE TABLE GeneAnnotation 
+        self.cur.execute('''CREATE TABLE GenesAnnotation 
                     (PubID INT NOT NULL CHECK (Pubid > 0),
                     GeneID INT,
                     FOREIGN KEY (GeneID) REFERENCES Gene(ID)
@@ -34,13 +34,6 @@ class pubmed_database:
                     Category TEXT NOT NULL,
                     MeshID INT,
                     FOREIGN KEY (MeshID) REFERENCES Mesh(ID)      
-                    )''')
-
-        self.cur.execute('''CREATE TABLE UniqueOwnAnnotation 
-                    (PubID INT NOT NULL CHECK (Pubid > 0),
-                    Category TEXT NULL,
-                    uniqueID INT,
-                    FOREIGN KEY (uniqueID) REFERENCES UniqueOwn(ID)
                     )''')
 
         self.cur.execute('''CREATE TABLE Species 
@@ -59,69 +52,49 @@ class pubmed_database:
                     Description TEXT
                     )''')
 
-        self.cur.execute('''CREATE TABLE UniqueOwn
-                    (ID TEXT PRIMARY KEY NOT NULL,
-                    Description TEXT
-                    )''')
-
+    def __create_indexes(self):
+        """
+        Creates indexes for tables
+        """
         self.cur.execute('''CREATE INDEX MeshAnnotationIndex ON MeshAnnotation(MeshID)''')
         self.cur.execute('''CREATE INDEX PubIDAnnotationIndex ON MeshAnnotation(PubID)''')
-        self.cur.execute('''CREATE INDEX GeneAnnotationIndex ON GeneAnnotation(GeneID)''')
+        self.cur.execute('''CREATE INDEX GenesAnnotationIndex ON GenesAnnotation(GeneID)''')
+        self.cur.execute('''CREATE INDEX SpeciesAnnotationIndex ON SpeciesAnnotation(SpeciesID)''')
         self.cur.execute('''CREATE INDEX MeshIndex ON Mesh(ID)''')
         self.cur.execute('''CREATE INDEX GenesIndex ON Genes(ID)''')
-        self.cur.execute('''CREATE INDEX UniqueOwnIndex ON UniqueOwn(ID)''')
         self.cur.execute('''CREATE INDEX SpeciesIndex ON Species(ID)''')
 
-    def __read_file(self) -> None:
+    def __read_annotation_file(self) -> None:
         """
         Reads pubtatorDataAnnotations.txt (Pubid, category, id, ) of article annotations
         """
         ignore_list = []
-        logging.info(msg="Reading ignore List")
         with open('D:\mathi\[PUBTATOR]\ignore_list.txt', 'r') as textfile:
             for textline in textfile:
                 ignore_list.append(textline[:-1])
 
-        with open('D:\[DATA]\[PUBTATOR_DATA]\pubtatorDataAnnotations.txt', 'r') as file:
-            next(file)
-            for i, textLine in enumerate(file):
-                text = textLine.split('\t')
-                match text[1]:
-                    case 'Species':  # All species annotations
-                        self.cur.execute("INSERT INTO SpeciesAnnotation(PubID, SpeciesID) \
-                                                              VALUES (?, ?, ?)", (text[0], text[2],))
-                    case 'Gene':  # All gene annotations
-                        self.cur.execute("INSERT INTO GenesAnnotation(PubID, GeneID) \
-                                                              VALUES (?, ?, ?)", (text[0], text[2],))
-                    case _:  # All the rest
-                        if text[2] not in ignore_list and text[2][:4] == 'MESH':
-                            self.cur.execute("INSERT INTO Mesh(PubID, Category, uniqueID) \
-                                                           VALUES (?, ?, ?)", (text[0], text[1], text[2][5:],))
-                        elif text[2] == '-':
-                            self.cur.execute("INSERT INTO M(PubID, Category, uniqueID) \
-                                                                                           VALUES (?, ?, ?)",
-                                             (text[0], text[1], text[2][5:],))
-        self.con.commit()
-
-    def __read_file_unique(self) -> None:
-        id = 1
-        with open(r'D:\[DATA]\[PUBTATOR_DATA]\pubtatorDataAnnotations.txt', 'r') as file:
-            next(file)
-            for i, textLine in enumerate(file):
-                text = textLine.split('\t')
-                if text[2] == "-":
-                    result = self.cur.execute("SELECT * FROM UniqueOwn WHERE ID = ?", (f'U{id}',))
-                    uniqueId = result.fetchone()
-                    if uniqueId is None or len(uniqueId) == 0:
-                        uniqueId = f'U{id}'
-                        self.cur.execute("INSERT INTO UniqueOwn(id, description) VALUES (?, ?)",
-                                          (uniqueId, text[3],))
-                        id += 1
-                    else:
-                        uniqueId = uniqueId[0]
-                    self.cur.execute("INSERT INTO UniqueOwnAnnotation(PubID, Category, uniqueID) VALUES(?, ?, ?)",
-                                      (text[0], text[1], uniqueId))
-        self.con.commit()
+        try:
+            with open('D:\[DATA]\[PUBTATOR_DATA]\pubtatorDataAnnotations.txt', 'r') as file:
+                next(file)
+                for i, textLine in enumerate(file):
+                    text = textLine.split('\t')
+                    match text[1]:
+                        case 'Species':  # All species annotations
+                            self.cur.execute("INSERT INTO SpeciesAnnotation(PubID, SpeciesID) \
+                                                                  VALUES (?, ?)", (text[0], text[2],))
+                        case 'Gene':  # All gene annotations
+                            self.cur.execute("INSERT INTO GenesAnnotation(PubID, GeneID) \
+                                                                  VALUES (?, ?)", (text[0], text[2],))
+                        case 'Disease' | 'Chemical':  # All the rest
+                            if text[2] not in ignore_list and text[2] != '':
+                                self.cur.execute("INSERT INTO MeshAnnotation(PubID, Category, MeshID) \
+                                                               VALUES (?, ?, ?)", (text[0], text[1], text[2][5:],))
+                    if i % 1000000 == 0:
+                        logging.info(f'At entry {i}')
+                        self.con.commit()
+            self.con.commit()
+        except Exception as e:
+            logging.error(e)
 
     def __read_file_mesh(self) -> None:
         tree = ET.parse('D:\[DATA]\[PUBTATOR_DATA]\desc2023.xml')
@@ -131,6 +104,7 @@ class pubmed_database:
             meshName = line.find("DescriptorName").find("String").text
             self.cur.execute("INSERT INTO Mesh (ID, MeshName) \
                                             VALUES (?, ?)", (meshId, meshName))
+        self.con.commit()
 
         tree = ET.parse('D:\[DATA]\[PUBTATOR_DATA]\supp2023.xml')
         root = tree.getroot()
@@ -142,6 +116,9 @@ class pubmed_database:
         self.con.commit()
 
     def __read_file_genes(self) -> None:
+        """
+        Reads the gene_info.txt file containing (ID, symbol, description) of genes
+        """
         with open(r'D:\[DATA]\[PUBTATOR_DATA]\gene_info.txt', 'r') as file:
             next(file)
             for line in file:
@@ -172,7 +149,7 @@ class pubmed_database:
         Main function for creating the database
         """
         path = os.getcwd()
-        if not os.path.isfile(f'{path}\database\pubmed.db'):
+        if not os.path.isfile(f'{path}\pubmed.db'):
             try:
                 self.con = sqlite3.connect('pubmed.db')
                 self.cur = self.con.cursor()
@@ -183,18 +160,22 @@ class pubmed_database:
             logging.info('Creating tables')
             self.__create_tables()
 
-            logging.info('Reading files')
+            logging.info('Reading species file')
             self.__read_file_species()
-            self.__read_file_unique()
+            logging.info('Reading genes file')
             self.__read_file_genes()
+            logging.info('Reading mesh file')
             self.__read_file_mesh()
-            self.__read_file()
+            logging.info('Reading annotation file')
+            self.__read_annotation_file()
 
+            #self.__create_indexes()
         else:
             logging.info(f'Database already exists in {path}')
 
 
 if __name__ == "__main__":
+    logging.info('Creating database')
     pmdb = pubmed_database()
     pmdb.create_database()
     logging.info('Done creating database')
