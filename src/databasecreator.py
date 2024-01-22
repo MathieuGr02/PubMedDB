@@ -17,11 +17,11 @@ class pubmed_database:
         """
         Creates the needed tables with indexes for the database
         """
-        self.cur.execute('''CREATE TABLE SpeciesAnnotation 
-                    (PubID INT NOT NULL CHECK (Pubid > 0),
-                    SpeciesID INT,
-                    FOREIGN KEY (SpeciesID) REFERENCES Species(ID)
-                    )''')
+        self.cur.execute('''CREATE TABLE SpeciesAnnotation (PubID INT NOT NULL CHECK (Pubid > 0),  
+                         SpeciesID INT, 
+                         FOREIGN KEY (SpeciesID) 
+                         REFERENCES Species(ID)
+                         )''')
 
         self.cur.execute('''CREATE TABLE GenesAnnotation 
                     (PubID INT NOT NULL CHECK (Pubid > 0),
@@ -97,6 +97,9 @@ class pubmed_database:
             logging.error(e)
 
     def __read_file_mesh(self) -> None:
+        """
+        Reads desc2023.xml and supp2023.xml of mesh identifiers
+        """
         tree = ET.parse('D:\[DATA]\[PUBTATOR_DATA]\desc2023.xml')
         root = tree.getroot()
         for line in root:
@@ -124,8 +127,8 @@ class pubmed_database:
             for line in file:
                 lineSplit = line.split("\t")
                 geneID, symbol, description = lineSplit[1], lineSplit[2], lineSplit[8]
-                if symbol == "NEWENTRY": x = None
-                if description.split(" ")[0] == "Record": y = None
+                if symbol == "NEWENTRY": symbol = None
+                if description.split(" ")[0] == "Record": description = None
                 self.cur.execute("INSERT INTO Genes (ID, Symbol, Description) \
                                                                 VALUES (?, ?, ?)", (geneID, symbol, description))
         self.con.commit()

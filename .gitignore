@@ -154,4 +154,5 @@ cython_debug/
 # Extra
 /src/pubmed.db
 /src/pubmed.db-journal
+*.txt
 
