@@ -3,15 +3,17 @@ import os
 import sqlite3
 import xml.etree.ElementTree as ET
 
-class pubmed_database:
+class PubmedDatabase:
     """
     Creates and fills all needed tables for the database
     """
-    def __init__(self):
+    logging.root.setLevel(logging.INFO)
+
+    def __init__(self, file_path):
         self.cur = None
         self.con = None
-        self.data_files = f'{os.getcwd()}\datafiles'
-        logging.root.setLevel(logging.INFO)
+        self.file_path = file_path
+        self.local_path = os.getcwd()
 
     def __create_tables(self) -> None:
         """
@@ -26,7 +28,7 @@ class pubmed_database:
         self.cur.execute('''CREATE TABLE GenesAnnotation 
                     (PubID INT NOT NULL CHECK (Pubid > 0),
                     GeneID INT,
-                    FOREIGN KEY (GeneID) REFERENCES Gene(ID)
+                    FOREIGN KEY (GeneID) REFERENCES Genes(ID)
                     )''')
 
         self.cur.execute('''CREATE TABLE MeshAnnotation 
@@ -69,12 +71,12 @@ class pubmed_database:
         Reads pubtatorDataAnnotations.txt (Pubid, category, id, ) of article annotations
         """
         ignore_list = []
-        with open('D:\mathi\[PUBTATOR]\ignore_list.txt', 'r') as textfile:
+        with open(f'{self.local_path}\ignore_list.txt', 'r') as textfile:
             for textline in textfile:
                 ignore_list.append(textline[:-1])
 
         try:
-            with open('D:\[DATA]\[PUBTATOR_DATA]\pubtatorDataAnnotations.txt', 'r') as file:
+            with open(f'{self.file_path}\pubtatorDataAnnotations.txt', 'r') as file:
                 next(file)
                 for i, textLine in enumerate(file):
                     text = textLine.split('\t')
@@ -100,29 +102,29 @@ class pubmed_database:
         """
         Reads desc2023.xml and supp2023.xml of mesh identifiers
         """
-        tree = ET.parse('D:\[DATA]\[PUBTATOR_DATA]\desc2023.xml')
+        tree = ET.parse(f'{self.file_path}\desc2023.xml')
         root = tree.getroot()
         for line in root:
-            meshId = line.find("DescriptorUI").text
-            meshName = line.find("DescriptorName").find("String").text
+            mesh_id = line.find("DescriptorUI").text
+            mesh_name = line.find("DescriptorName").find("String").text
             self.cur.execute("INSERT INTO Mesh (ID, MeshName) \
-                                            VALUES (?, ?)", (meshId, meshName))
+                                            VALUES (?, ?)", (mesh_id, mesh_name))
         self.con.commit()
 
-        tree = ET.parse('D:\[DATA]\[PUBTATOR_DATA]\supp2023.xml')
+        tree = ET.parse(f'{self.file_path}\supp2023.xml')
         root = tree.getroot()
         for line in root:
-            meshId = line.find("SupplementalRecordUI").text
-            meshName = line.find("SupplementalRecordName").find("String").text
+            mesh_id = line.find("SupplementalRecordUI").text
+            mesh_name = line.find("SupplementalRecordName").find("String").text
             self.cur.execute("INSERT INTO Mesh (ID, MeshName) \
-                                            VALUES (?, ?)", (meshId, meshName))
+                                            VALUES (?, ?)", (mesh_id, mesh_name))
         self.con.commit()
 
     def __read_file_genes(self) -> None:
         """
         Reads the gene_info.txt file containing (ID, symbol, description) of genes
         """
-        with open(r'D:\[DATA]\[PUBTATOR_DATA]\gene_info.txt', 'r') as file:
+        with open(f'{self.file_path}\gene_info.txt', 'r') as file:
             next(file)
             for line in file:
                 lineSplit = line.split("\t")
@@ -137,7 +139,7 @@ class pubmed_database:
         """
         Reads the names.txt file containing the (ID, name) of species
         """
-        with open(r'D:\[DATA]\[PUBTATOR_DATA]\taxdmp\names.txt', 'r') as textFile:
+        with open(f'{self.file_path}' + r'\names.txt', 'r') as textFile:
             for line in textFile:
                 lineSplit = line.split("\t")
                 lineShort = [i for i in lineSplit if i != "|"][0: -1]
@@ -152,7 +154,7 @@ class pubmed_database:
         Main function for creating the database
         """
         path = os.getcwd()
-        if not os.path.isfile(f'{path}\pubmed.db'):
+        if not os.path.isfile(f'{self.local_path}\pubmed.db'):
             try:
                 self.con = sqlite3.connect('pubmed.db')
                 self.cur = self.con.cursor()
@@ -174,11 +176,13 @@ class pubmed_database:
 
             #self.__create_indexes()
         else:
-            logging.info(f'Database already exists in {path}')
+            logging.info(f'Database already exists in {self.local_path}')
 
 
 if __name__ == "__main__":
     logging.info('Creating database')
-    pmdb = pubmed_database()
+    output = input('Enter files location:')
+
+    pmdb = PubmedDatabase(output)
     pmdb.create_database()
     logging.info('Done creating database')
