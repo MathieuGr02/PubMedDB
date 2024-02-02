@@ -15,6 +15,16 @@ List of all Commands that can be entered into the program.
 | gap     | \<Pubmed ID>           | Gives all annotations of an article                                                          |
 | gpm     | \<Mesh ID>             | Gives all Pubmed IDs containing given mesh as annotation                                     |
 | quit    |                        | Quits the programm                                                                           |
+## Local setup:
+
+The paths of the Database and output can be specified through the ´config_handler.json´ file.
+
+´´´JSON
+{
+db_path: "",
+output_path: ""
+}
+´´´
 
 ## Dependecies
 

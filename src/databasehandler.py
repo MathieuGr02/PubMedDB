@@ -3,14 +3,41 @@ import os
 import time
 from datetime import date
 import sqlite3
+import json
 
 class DataBaseHandler:
     logging.root.setLevel(logging.INFO)
 
     def __init__(self):
-        self.con = sqlite3.connect('pubmed.db')
-        self.cur = self.con.cursor()
-        self.path = os.getcwd()
+        self.db_path = None
+        self.output_path = None
+        self.load_json()
+
+        self.con = None
+        self.cur = None
+        self.connect_db()
+
+    def connect_db(self):
+        try:
+            self.con = sqlite3.connect(self.db_path)
+            self.cur = self.con.cursor()
+        except Exception as e:
+            logging.error(e)
+
+    def load_json(self):
+        try:
+            if os.path.isfile('local_config_handler.json'):
+                json_file = json.load(open('local_config_handler.json'))
+            else:
+                json_file = json.load(open('config_handler.json'))
+            for key in json_file:
+                match key:
+                    case 'db_path':
+                        self.db_path = json_file[key]
+                    case 'output_path':
+                        self.output_path = json_file[key]
+        except Exception as e:
+            logging.error(e)
 
     def get_pubid_with_mesh(self, mesh_id_tuple: tuple) -> list:
         """
@@ -28,7 +55,7 @@ class DataBaseHandler:
         :param pubid: Specific pubmed id
         :return: list: List of all annotations
         """
-        self.cur.execute("SELECT Category, MeshID, MeshName FROM MeshAnnotation MA JOIN Mesh MW ON MA.MeshID = MW.ID "
+        self.cur.execute("SELECT Category, MeshID, MeshName FROM MeshAnnotation MA JOIN Mesh ME ON MA.MeshID = ME.ID "
                          "WHERE PUBID = ?", (pubid,))
         return self.cur.fetchall()
 
@@ -48,11 +75,12 @@ class DataBaseHandler:
                 self.cur.execute('SELECT Symbol FROM Genes WHERE ID = ?', (id,))
         return self.cur.fetchone()[0]
 
-    def get_related_annotations(self, category: str, mesh_id_tuple: tuple) -> None:
+    def get_related_annotations(self, category: str, mesh_id_tuple: tuple, threshold: str) -> None:
         """
         Gives back all other annotations of category by count of Pubids who have the specific meshid as an annotation
         :param category: Search Category [Disease, Chemical]
         :param mesh_id_tuple: Search Mesh IDs
+        :param threshold: Minimum number of occurences
         """
         start = time.time()
 
@@ -60,7 +88,8 @@ class DataBaseHandler:
         sql_query = f'''SELECT MeshName, count FROM Mesh M1
                         JOIN (SELECT MeshID, COUNT(MeshID) as count FROM MeshAnnotation
                             WHERE Category = ? AND {search_clause} 
-                            GROUP BY MeshID) M2
+                            GROUP BY MeshID
+                            HAVING count >= {threshold}) M2
                         ON M1.ID = M2.MeshID
                         ORDER BY count DESC'''
 
@@ -83,10 +112,7 @@ class DataBaseHandler:
         :param meshname_count_list: List with meshname and occurence count
         :param pubid_list: List of all pub ids
         :param query_time: Execution time for query
-        :return:
         """
-
-
         meshname_list = []
         for mesh_id in mesh_id_tuple:
             self.cur.execute('SELECT MeshName FROM Mesh WHERE ID = ?', (mesh_id,))
@@ -95,7 +121,7 @@ class DataBaseHandler:
         file_name = f'{category}_{"_".join(meshname_list).replace(" ", "_")}.txt'
         logging.info(f"Writing File under name {file_name}")
 
-        with open(f"{self.path}\{file_name}", 'w') as outputFile:
+        with open(f"{self.output_path}\{file_name}", 'w') as outputFile:
             outputFile.write(f"{50 * '='} \n Search results for entries:"
                              f"\n \tCategory: {category}"
                              f"\n \tMeshId: {mesh_id_tuple}"
@@ -131,7 +157,7 @@ if __name__ == '__main__':
                     f'Commands related to search functions: \n'
                     f'  - categories -> Gives all categories \n'
                     f'  - gna <id> <type> -> Get name of id. Type: [mesh, species, genes] \n'
-                    f'  - gra <Category> - <Mesh ID> or <Mesh name> -> Gives text file with all related annotations to searched mesh (Allows for multiple mesh ids) \n'
+                    f'  - gra <Category> - <Mesh ID> or <Mesh name> <Threshold> (Optional) -> Gives text file with all related annotations to searched mesh (Allows for multiple mesh ids) \n'
                     f'  - gap <Pubmed ID> -> Gives all annotations of an article \n'
                     f'  - gpm <Mesh ID> -> Gives all Pubmed IDs containing given mesh as annotation \n'
                     f'  - quit -> quits programm'
@@ -139,11 +165,15 @@ if __name__ == '__main__':
             case 'categories':
                 print(f'Categories: Disease, Chemical')
             case 'gra':
-                mesh_id_tuple = tuple(mesh_id for mesh_id in output_text_split[2:])
-                dbh.get_related_annotations(output_text_split[1], mesh_id_tuple)
+                mesh_id_tuple = tuple(mesh_id for mesh_id in output_text_split[2:-1])
+                if output_text_split[-1][0] != 'D':
+                    dbh.get_related_annotations(output_text_split[1], mesh_id_tuple, output_text_split[-1])
+                else:
+                    dbh.get_related_annotations(output_text_split[1], mesh_id_tuple, '0')
                 print('file written')
             case 'gap':
-                dbh.get_all_annotations_of_pubmedid(output_text_split[1])
+                db_search_result = dbh.get_all_annotations_of_pubmedid(output_text_split[1])
+                print(db_search_result)
             case 'gpm':
                 mesh_id_tuple = tuple(mesh_id for mesh_id in output_text_split[2:])
                 db_search_result = dbh.get_pubid_with_mesh(mesh_id_tuple)

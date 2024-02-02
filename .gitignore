@@ -154,5 +154,7 @@ cython_debug/
 # Extra
 /src/pubmed.db
 /src/pubmed.db-journal
-*.txt
+output/
+.idea/
+local_config_handler.json
 
