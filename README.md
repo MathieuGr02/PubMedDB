@@ -21,8 +21,8 @@ The paths of the Database and output can be specified through the `config_handle
 
 ```JSON
 {
-db_path: "",
-output_path: ""
+  "db_path": "",
+  "output_path": ""
 }
 ```
 
